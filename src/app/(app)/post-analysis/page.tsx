@@ -12,6 +12,7 @@ import { analyzePost } from "@/lib/api";
 import type { PostAnalysis } from "@/lib/types";
 
 const recoIcon = { amplify: ArrowUp, engage: Sparkles, future: Wrench };
+const intentColor = { positive: "var(--color-positive)", warning: "var(--color-warning)", critical: "var(--color-critical)" } as const;
 const DEFAULT_URL = "https://x.com/tech_maren/status/1834500000000000000";
 
 export default function PostAnalysisPage() {
@@ -37,6 +38,8 @@ export default function PostAnalysisPage() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
+          placeholder="Paste a post link, or the text of any post to analyse it"
+          aria-label="Post link or text"
           className="mono h-[34px] flex-1 bg-transparent text-[13.5px] outline-none"
         />
         <button onClick={run} className="flex items-center gap-1.5 rounded-[9px] bg-[var(--color-primary)] px-[18px] py-2 text-[13px] font-medium text-white">
@@ -55,14 +58,16 @@ export default function PostAnalysisPage() {
                 <Avatar initials={r.author.initials} color={r.author.color} size="md" />
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5"><span className="text-[14px] font-semibold">{r.author.name}</span>{r.author.verified && <span className="text-[12px] text-[var(--color-info)]">✓</span>}</div>
-                  <div className="mono text-[11px] text-[var(--color-faint)]">{r.author.handle} · X</div>
+                  <div className="mono text-[11px] text-[var(--color-faint)]">{r.author.handle}{r.source !== "text" && " · X"}</div>
                 </div>
                 <PlatformIcon platform={r.platform} />
               </div>
               <p className="mb-3.5 text-[15px] leading-[1.55]">{r.content}</p>
-              <div className="mono flex gap-[18px] border-t border-[var(--color-border)] pt-3.5 text-[12px] text-[var(--color-muted)]">
-                <span>♥ {r.performance[0].value}</span><span>💬 {r.performance[1].value}</span><span>↻ {r.performance[2].value}</span>
-              </div>
+              {r.source !== "text" && (
+                <div className="mono flex gap-[18px] border-t border-[var(--color-border)] pt-3.5 text-[12px] text-[var(--color-muted)]">
+                  <span>♥ {r.performance[0].value}</span><span>💬 {r.performance[1].value}</span><span>↻ {r.performance[2].value}</span>
+                </div>
+              )}
             </Card>
             <Card className="p-[16px_18px]">
               <div className="mb-3.5 text-[13px] font-semibold">Performance breakdown</div>
@@ -71,7 +76,7 @@ export default function PostAnalysisPage() {
                   <div key={p.label}>
                     <div className="mb-1.5 text-[11px] text-[var(--color-faint)]">{p.label}</div>
                     <div className="mono text-[19px] font-semibold">{p.value}</div>
-                    <div className="mono mt-0.5 text-[10px] text-[var(--color-positive)]">{p.sub}</div>
+                    <div className={`mono mt-0.5 text-[10px] ${p.intent === "critical" ? "text-[var(--color-critical)]" : "text-[var(--color-positive)]"}`}>{p.sub}</div>
                   </div>
                 ))}
               </div>
@@ -90,15 +95,15 @@ export default function PostAnalysisPage() {
                     { name: "Negative", value: r.sentiment.negative, color: "#ef4444" },
                   ]} />
                 </div>
-                <div className="mt-1 text-[11px] text-[var(--color-muted)]">Emotional tone: <span className="text-[var(--color-positive)]">{r.sentiment.tone}</span></div>
+                <div className="mt-1 text-[11px] text-[var(--color-muted)]">Emotional tone: <span style={{ color: r.sentiment.negative > r.sentiment.positive ? "var(--color-critical)" : "var(--color-positive)" }}>{r.sentiment.tone}</span></div>
               </Card>
               <Card className="p-[16px_18px]">
                 <div className="mb-3.5 text-[13px] font-semibold">Content evaluation</div>
                 <div className="space-y-3">
                   {r.scores.map((s) => (
                     <div key={s.label}>
-                      <div className="mb-1.5 flex justify-between text-[12px]"><span className="text-[var(--color-muted)]">{s.label}</span><span className="mono text-[var(--color-positive)]">{s.value}</span></div>
-                      <div className="h-1.5 rounded bg-[var(--color-track)]"><div className="h-full rounded bg-[var(--color-positive)]" style={{ width: `${s.value}%` }} /></div>
+                      <div className="mb-1.5 flex justify-between text-[12px]"><span className="text-[var(--color-muted)]">{s.label}</span><span className="mono" style={{ color: intentColor[s.intent as keyof typeof intentColor] ?? intentColor.positive }}>{s.value}</span></div>
+                      <div className="h-1.5 rounded bg-[var(--color-track)]"><div className="h-full rounded" style={{ width: `${s.value}%`, background: intentColor[s.intent as keyof typeof intentColor] ?? intentColor.positive }} /></div>
                     </div>
                   ))}
                 </div>

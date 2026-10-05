@@ -1,0 +1,22 @@
+# Run the whole stack with demo data:  docker compose up --build
+# Then open http://localhost:3000 and sign in as ochiengs@vela.co / vela-demo-2026
+services:
+  backend:
+    build: ./backend
+    environment:
+      DEMO_DATA: "1"
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-for-anything-public}
+      DJANGO_ALLOWED_HOSTS: backend,localhost,127.0.0.1
+
+  frontend:
+    build:
+      context: .
+      args:
+        DJANGO_API_URL: http://backend:8500/api
+    environment:
+      DJANGO_API_URL: http://backend:8500/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend

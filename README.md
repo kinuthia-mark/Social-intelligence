@@ -10,6 +10,39 @@ A brand monitoring and social media intelligence dashboard. It collects mentions
 
 The idea is similar to Brandwatch or Sprout Social, scaled down for a single team. The frontend is Next.js, the API is Django REST Framework, and sign-in uses JWTs kept in httpOnly cookies.
 
+![socialNET overview dashboard](docs/screenshots/dashboard.png)
+
+**Highlights**
+
+- 14 screens with a dark, data-dense design, a command palette (Ctrl+K) and a mobile layout
+- A **sentiment and risk engine** written from scratch (`backend/intel/sentiment.py`): paste any post and get a sentiment split, emotions, topics, risk terms and recommended actions. It handles negation ("not good"), intensifiers, shouting and emoji, and needs no API key
+- A **data assistant** that answers questions about sentiment, influencers, risks and platforms by querying the database, so its numbers always match the dashboards
+- JWT auth where the browser never sees a token: Next.js route handlers keep them in httpOnly cookies, and refresh tokens are rotated and blacklisted on logout
+- 30 backend tests, a TypeScript check, a production build and a full Docker Compose run in CI on every push
+
+---
+
+## Screenshots
+
+| Mentions inbox with detail panel | Crisis command centre |
+|---|---|
+| ![Mentions inbox](docs/screenshots/mention-detail.png) | ![Crisis centre](docs/screenshots/crisis.png) |
+| **Post analysis of pasted text** | **Data assistant** |
+| ![Post analysis](docs/screenshots/post-analysis-text.png) | ![Assistant](docs/screenshots/assistant.png) |
+| **Analytics** | **Landing page** |
+| ![Analytics](docs/screenshots/analytics.png) | ![Landing page](docs/screenshots/landing.png) |
+
+<details>
+<summary>More screens: alerts, reports, engagement, admin, mobile</summary>
+
+| | |
+|---|---|
+| ![Alerts](docs/screenshots/alerts.png) | ![Reports](docs/screenshots/reports.png) |
+| ![Engagement](docs/screenshots/engagement.png) | ![Admin](docs/screenshots/admin.png) |
+
+<p align="center"><img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on a phone" width="300"></p>
+</details>
+
 ---
 
 ## What it does
@@ -21,6 +54,16 @@ socialNET gathers those mentions in one place, filters out the noise, raises an 
 ---
 
 ## Quick start
+
+### With Docker (one command)
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:3000` and sign in with the demo account below. Compose builds the Django API (served by Gunicorn) and the Next.js app, and loads the demo dataset on start.
+
+### Without Docker
 
 You need two terminals running at the same time.
 
@@ -213,11 +256,17 @@ Every screen has loading skeletons, empty states and a layout that works on desk
 │   │   ├── models.py         ← Mention, Alert, Report, Crisis, etc.
 │   │   ├── views.py          ← API endpoints
 │   │   ├── serializers.py    ← JSON serialisation
-│   │   ├── mock_data.py      ← Canned responses (KPIs, charts, assistant replies)
-│   │   ├── tests.py          ← API tests
+│   │   ├── sentiment.py      ← Sentiment, emotion, topic and risk engine
+│   │   ├── assistant.py      ← Data assistant: question router + DB queries
+│   │   ├── mock_data.py      ← Fixed demo values (KPIs, charts, sample post)
+│   │   ├── tests.py          ← API access tests
+│   │   ├── test_analysis.py  ← Sentiment engine, post analysis and assistant tests
 │   │   └── management/commands/seed_data.py  ← Loads the demo dataset
 │   └── manage.py
-├── .github/workflows/ci.yml  ← Runs the backend tests and the frontend build
+├── .github/workflows/ci.yml  ← Backend tests, frontend build, Docker Compose run
+├── docker-compose.yml        ← Whole stack with demo data
+├── Dockerfile                ← Next.js image (backend/Dockerfile for the API)
+├── docs/screenshots/         ← Images used in this README
 ├── next.config.mjs           ← Rewrites /api/* to Django
 ├── package.json
 ├── tsconfig.json
@@ -286,9 +335,59 @@ graph LR
 - Mention volume chart
 - Sentiment and platform breakdowns
 - Trending hashtags
-- Assistant replies and the sample post analysis
+- The sample post shown when a link is analysed
 
 These are fixed demo values. A production version would compute them from real platform data.
+
+**Computed on request:**
+- Post analysis of pasted text (`sentiment.py`)
+- Every assistant answer (`assistant.py`)
+
+---
+
+## The sentiment and risk engine
+
+`backend/intel/sentiment.py` scores short social posts without any model download or API key. It is a lexicon-based analyser tuned for the way people write online:
+
+| Step | What it does | Example |
+|---|---|---|
+| Tokenise | Words, hashtags and @handles | `#VelaGlow`, `@tech_maren` |
+| Lexicon lookup | Each word has a weight from -3 to +3 | `love` +3, `awful` -3, `recall` -2 |
+| Negation | A negator in the three words before flips and softens the weight | "not good" is negative |
+| Intensifiers | "really", "so", "absolutely" multiply the weight | "really good" > "good" |
+| Shouting and emoji | ALL CAPS words count 1.3x; emoji carry their own weight | "GOOD 😍😍" |
+| Exclamation marks | Amplify whichever tone is dominant | "love it!!!" |
+| Neutral share | Shrinks as the text carries more sentiment words | a long factual post stays neutral |
+
+The output is a positive / neutral / negative split that always adds up to 100, a label (positive, negative, mixed or neutral), a confidence score, the top emotions (joy, trust, fear, anger, distrust ...), topics (hashtags plus repeated keywords) and **risk terms** such as recall, contamination, lawsuit or unsafe.
+
+On the hand-labelled demo mentions it agrees with the human label on 7 out of 8 posts, and a test fails if that drops below 75%.
+
+`POST /api/post-analysis` with `{"text": "..."}` runs the engine and turns the result into scores, positive and risk indicators and recommendations:
+
+```json
+{
+  "label": "negative",
+  "sentiment": {"positive": 0, "neutral": 33, "negative": 67, "tone": "Fear"},
+  "risks": ["mentions recall", "mentions sick", "\"got sick\""],
+  "recommendations": [{"title": "Respond before it spreads", "desc": "The post mentions recall, sick. Reply with facts or a source, and flag it to the crisis team."}]
+}
+```
+
+## The data assistant
+
+`backend/intel/assistant.py` routes each question by keyword to a handler that queries the database:
+
+| Question about | Answer is built from |
+|---|---|
+| Risks, crisis, threats | Mentions run through the risk scan, plus any open crisis |
+| Influencers, creators | The `Influencer` table, by impact score, with negative voices flagged |
+| Platforms, channels | Mention counts and negative counts per platform |
+| Improving engagement | Unassigned mentions and positive posts worth amplifying |
+| Sentiment, audience, campaign | Sentiment split and the topics driving each side |
+| Anything else | A short summary and a list of what it can answer |
+
+Because every number comes from the same tables as the dashboards, the assistant cannot contradict them. Swapping the router for an LLM call would only need a change in `assistant.reply()`.
 
 **Every endpoint** requires a signed-in user except register, login, refresh and logout.
 
@@ -312,10 +411,12 @@ These are fixed demo values. A production version would compute them from real p
 - Django REST Framework
 - djangorestframework-simplejwt (JWT, with refresh token blacklisting)
 - ReportLab (PDF reports)
+- Gunicorn (in the Docker image)
 - SQLite (swap for Postgres in production)
 
 **Tooling:**
-- GitHub Actions runs the Django tests and a full `next build` on every push and pull request
+- GitHub Actions: Django tests, TypeScript check, `next build`, and a Docker Compose run that signs in and calls the API through the Next.js proxy
+- Docker and Docker Compose
 
 ---
 
@@ -334,6 +435,10 @@ The backend tests check that:
 - the API only accepts the token from the `access_token` cookie, not from an `Authorization` header
 - logging out blacklists the refresh token so it cannot be used again
 - every data endpoint returns 401 to anonymous callers and 200 to the seeded demo user
+- the sentiment engine handles positive, negative, mixed and neutral text, negation, emoji and shouting, finds risk terms, and its percentages always add up to 100
+- the engine agrees with at least 75% of the hand-labelled demo mentions
+- pasted text gets the right label, risk list and recommendations; very long text is rejected
+- the assistant answers sentiment, risk, influencer and platform questions from real counts, and falls back to a summary
 
 For the frontend, `npm run typecheck` runs the TypeScript compiler and `npm run build` makes a production build.
 
@@ -428,7 +533,7 @@ Please run the backend tests and `npm run typecheck` before opening a pull reque
 
 ## Notes
 
-- This is a demo with canned data. A production version would pull from the real platform APIs (X API v2, Meta Graph API, LinkedIn API).
+- Mentions are demo data. A production version would pull them from the platform APIs (X API v2, Meta Graph API, LinkedIn API) and run each one through `sentiment.py` on arrival.
 - The seeded dataset follows "Vela", a fictional drinks brand dealing with a false product-recall rumour.
 
 ## License

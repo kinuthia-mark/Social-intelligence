@@ -96,7 +96,10 @@ export const addCrisisEvent = (id: string, event: Partial<Omit<CrisisEvent, "id"
 
 /* AI */
 export const askAssistant = (prompt: string): Promise<ChatMessage> => postJson("/assistant", { prompt });
-export const analyzePost = (url: string): Promise<PostAnalysis> => postJson("/post-analysis", { url });
+// A link loads the sample post; anything else is analysed as text by the
+// sentiment engine in backend/intel/sentiment.py.
+export const analyzePost = (input: string): Promise<PostAnalysis> =>
+  postJson("/post-analysis", /^https?:\/\//i.test(input.trim()) ? { url: input.trim() } : { text: input });
 
 /* Reports */
 export const getReports = (): Promise<Report[]> => getJson("/reports");
