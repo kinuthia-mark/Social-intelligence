@@ -1,13 +1,16 @@
+import os
 from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "dev-only-secret-key-not-for-production"
+# Local development works with no setup at all. For any real deployment set
+# DJANGO_SECRET_KEY, DJANGO_DEBUG=0 and DJANGO_ALLOWED_HOSTS in the environment.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-secret-key-not-for-production")
 
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -98,7 +101,6 @@ SIMPLE_JWT = {
 # Dev-only: the Next app runs on localhost:3000; the browser only ever talks
 # to Next (which proxies /api/* to us), so this only matters if something
 # calls Django directly.
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    "DJANGO_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
