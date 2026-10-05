@@ -8,6 +8,11 @@ services:
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-for-anything-public}
       DJANGO_ALLOWED_HOSTS: backend,localhost,127.0.0.1
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
 
   frontend:
     build:
@@ -19,4 +24,5 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

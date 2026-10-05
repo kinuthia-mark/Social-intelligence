@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and start
-        run: docker compose up -d --build
+        run: docker compose up -d --build --wait
       - name: Wait for the frontend
         run: |
           for i in $(seq 1 60); do
