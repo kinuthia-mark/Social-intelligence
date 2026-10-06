@@ -186,3 +186,28 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.who} {self.action}"
+
+
+class MentionEvent(models.Model):
+    """One mention in the brand's history, used for every dashboard aggregate.
+
+    `Mention` holds the handful of hand-written posts shown in the inbox;
+    this table holds the volume behind the charts. Sentiment is assigned by
+    the engine in sentiment.py when a row is created, the same way a live
+    feed would be labelled on arrival.
+    """
+
+    created_at = models.DateTimeField(db_index=True)
+    platform = models.CharField(max_length=20, db_index=True)
+    text = models.TextField()
+    sentiment = models.CharField(max_length=20, db_index=True)
+    hashtags = models.JSONField(default=list)
+    reach = models.PositiveIntegerField(default=0)
+    engagement = models.PositiveIntegerField(default=0)
+    responded = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.platform} {self.created_at:%Y-%m-%d}: {self.text[:40]}"

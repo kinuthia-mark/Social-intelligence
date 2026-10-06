@@ -18,7 +18,8 @@ The idea is similar to Brandwatch or Sprout Social, scaled down for a single tea
 - A **sentiment and risk engine** written from scratch (`backend/intel/sentiment.py`): paste any post and get a sentiment split, emotions, topics, risk terms and recommended actions. It handles negation ("not good"), intensifiers, shouting and emoji, and needs no API key
 - A **data assistant** that answers questions about sentiment, influencers, risks and platforms by querying the database, so its numbers always match the dashboards
 - JWT auth where the browser never sees a token: Next.js route handlers keep them in httpOnly cookies, and refresh tokens are rotated and blacklisted on logout
-- 30 backend tests, a TypeScript check, a production build and a full Docker Compose run in CI on every push
+- Every number on the dashboards is computed from about 10,000 mentions in the database, labelled by the same sentiment engine
+- 42 backend tests, 17 frontend tests (Vitest), a TypeScript check, a production build and a full Docker Compose run in CI on every push
 
 ---
 
@@ -258,9 +259,12 @@ Every screen has loading skeletons, empty states and a layout that works on desk
 │   │   ├── serializers.py    ← JSON serialisation
 │   │   ├── sentiment.py      ← Sentiment, emotion, topic and risk engine
 │   │   ├── assistant.py      ← Data assistant: question router + DB queries
-│   │   ├── mock_data.py      ← Fixed demo values (KPIs, charts, sample post)
+│   │   ├── history.py        ← Generates 14 weeks of labelled mention history
+│   │   ├── analytics.py      ← Every dashboard aggregate, computed from the database
+│   │   ├── mock_data.py      ← Report templates and the sample post
 │   │   ├── tests.py          ← API access tests
 │   │   ├── test_analysis.py  ← Sentiment engine, post analysis and assistant tests
+│   │   ├── test_analytics.py ← Aggregates, history generator, empty-database cases
 │   │   └── management/commands/seed_data.py  ← Loads the demo dataset
 │   └── manage.py
 ├── .github/workflows/ci.yml  ← Backend tests, frontend build, Docker Compose run
@@ -319,7 +323,8 @@ graph LR
 `backend/` is a small Django project with two apps: `accounts` for sign-in and `intel` for everything else.
 
 **Data stored in the database** (SQLite, queryable):
-- `Mention` – one social media post that mentions the brand
+- `Mention` – the hand-written posts in the mentions inbox, with notes and suggested replies
+- `MentionEvent` – the brand's mention history (about 10,000 rows over 14 weeks) behind every chart
 - `Alert` / `AlertRule` – notifications and the rules that trigger them
 - `Report` / `ScheduledReport` – saved and scheduled reports
 - `Crisis` – crisis incidents and their timeline
@@ -329,19 +334,36 @@ graph LR
 
 `python manage.py seed_data` fills these with the Vela demo dataset.
 
-**Data defined in code** (`mock_data.py`):
-- KPI cards (follower growth, sentiment trend)
-- Brand health score
-- Mention volume chart
-- Sentiment and platform breakdowns
-- Trending hashtags
-- The sample post shown when a link is analysed
+### Where the numbers come from
 
-These are fixed demo values. A production version would compute them from real platform data.
+```mermaid
+flowchart LR
+    H[history.py<br/>generates 14 weeks of posts] --> E[sentiment.py<br/>labels every post]
+    E --> DB[(MentionEvent)]
+    DB --> A[analytics.py<br/>KPIs, series, splits, hashtags, health]
+    DB --> AS[assistant.py<br/>answers questions]
+    A --> API[REST endpoints]
+    AS --> API
+    API --> UI[Dashboards]
+```
 
-**Computed on request:**
-- Post analysis of pasted text (`sentiment.py`)
-- Every assistant answer (`assistant.py`)
+**`history.py`** builds the demo brand's story: steady growth from the #VelaGlow campaign, then a false product-recall rumour two days ago that sends negative posts up sharply. Posts are created from templates and labelled by `sentiment.analyze()`, exactly as a live feed would be labelled on arrival. A fixed random seed makes every run identical, which keeps tests and screenshots stable.
+
+**`analytics.py`** computes everything the overview and analytics screens show, using rolling windows that end now ("this week" is the last 7 days, compared with the 7 days before):
+
+| Endpoint | Calculation |
+|---|---|
+| `/api/kpis` | Mentions, reach, engagement rate (engagement ÷ reach), positive share and response rate for this week, the change on last week, and a 10-day sparkline |
+| `/api/brand-health` | 0.55 × positive % + 0.30 × response % + 0.15 × (100 − 3 × negative %), clamped to 0–100. 75+ is healthy, 50–74 at risk, below 50 critical. Drivers explain the change on last week |
+| `/api/mention-volume`, `/api/engagement-series` | One bucket per 24 hours for 7, 30 or 90 days |
+| `/api/sentiment-distribution`, `/api/platform-breakdown`, `/api/platform-comparison` | Shares over the last 30 days |
+| `/api/hashtags`, `/api/trends` | Hashtag volume, reach, week-on-week change and a 7-day sparkline. Anything containing "recall" is flagged critical |
+| `/api/sentiment-bars` | Positive, neutral and negative share for each of the last 14 weeks |
+| `/api/live-feed` | The five newest posts |
+
+Run the overview during the rumour and the brand health drops into "AT RISK", #VelaRecall appears in the trends as new, the negative line jumps on the volume chart, and the assistant reports the share of posts with risk language. None of that is typed in: it falls out of the data.
+
+**Still fixed in code** (`mock_data.py`): the four report templates and the sample post shown when a link (rather than text) is analysed, because fetching a live post needs platform API access.
 
 ---
 
@@ -439,8 +461,17 @@ The backend tests check that:
 - the engine agrees with at least 75% of the hand-labelled demo mentions
 - pasted text gets the right label, risk list and recommendations; very long text is rejected
 - the assistant answers sentiment, risk, influencer and platform questions from real counts, and falls back to a summary
+- every aggregate works on an empty database; the KPI and volume numbers match direct database counts; percentage splits add up to 100; the history generator is deterministic and its labels come from the engine; the rumour shows up in the latest week, the trends and the health score
 
-For the frontend, `npm run typecheck` runs the TypeScript compiler and `npm run build` makes a production build.
+Frontend tests run with [Vitest](https://vitest.dev):
+
+```bash
+npm test
+```
+
+They cover the API layer in `src/lib/api.ts` (a 401 triggers one token refresh and a retry, requests failing at the same time share a single refresh, a failed refresh gives up, error messages come from the API) and the formatting and CSV helpers.
+
+`npm run typecheck` runs the TypeScript compiler and `npm run build` makes a production build.
 
 ---
 

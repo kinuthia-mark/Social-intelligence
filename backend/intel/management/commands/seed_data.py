@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
+from intel.history import seed_history
+
 from intel.models import (
     Alert, AlertRule, AuditLog, Crisis, Integration, Influencer, Mention, Report, ScheduledReport, TeamUser,
 )
@@ -237,6 +239,9 @@ class Command(BaseCommand):
         for row in AUDIT_LOGS:
             AuditLog.objects.create(**row)
 
+        # 14 weeks of mention history behind the dashboard charts.
+        history_rows = seed_history()
+
         if options.get("verbosity", 1) > 0:
-            self.stdout.write(self.style.SUCCESS("Seeded socialNET demo data."))
+            self.stdout.write(self.style.SUCCESS(f"Seeded socialNET demo data ({history_rows:,} history mentions)."))
             self.stdout.write(f"Demo login: ochiengs@vela.co / {DEMO_PASSWORD}")

@@ -22,72 +22,21 @@ const suggestedPrompts = [
   "Suggest strategies to improve engagement.",
 ];
 
-const initialChat: ChatMessage[] = [
-  {
-    id: "w1", role: "user",
-    content: "What caused the spike in negative mentions yesterday?",
-  },
-  {
-    id: "w2", role: "assistant",
-    content:
-      "Negative mentions rose +218% in 6 hours yesterday, driven almost entirely by an unverified product-recall rumor. It originated in a single Reddit thread on r/skincareaddiction at 14:20 UTC, then amplified onto X via three mid-size accounts. Sentiment recovered partially after your team’s holding statement, but the conversation is still active.",
-    cards: [
-      { t: "Negative mentions", v: "+218%", s: "6h window", intent: "critical" },
-      { t: "Origin", v: "r/skincareaddiction", s: "1 thread → 2.4k upvotes", intent: "warning" },
-      { t: "Reach exposed", v: "2.8M", s: "before mitigation", intent: "warning" },
-    ],
-    sources: ["Reddit · r/skincareaddiction", "X · @dailyhealthnut", "News · TechWire"],
-    action: { label: "Open Crisis Center", href: "/crisis" },
-  },
-];
-
-// Additional canned past conversations for the RECENT sidebar — demo chat
-// history, same treatment as suggestedPrompts/initialChat above.
-const chatArchive: Record<string, ChatMessage[]> = {
-  "Negative spike investigation": initialChat,
-  "#VelaGlow campaign recap": [
-    { id: "c1_u", role: "user", content: "Summarize audience sentiment for the last campaign." },
-    {
-      id: "c1_a", role: "assistant",
-      content: "The #VelaGlow campaign netted 62% positive / 24% neutral / 14% negative across 48.2K mentions. Positivity clustered around the Yuzu flavor and the Maren collab; the negative slice is almost entirely the recall rumor, not campaign fatigue.",
-      cards: [
-        { t: "Net sentiment", v: "+48", s: "pos minus neg", intent: "positive" },
-        { t: "Top driver", v: "Yuzu flavor", s: "8.4k mentions", intent: "positive" },
-      ],
-      sources: ["Analytics · Campaign view", "Mentions · #VelaGlow"],
-    },
-  ],
-  "Competitor share of voice": [
-    { id: "c2_u", role: "user", content: "How does our share of voice compare to competitors this month?" },
-    {
-      id: "c2_a", role: "assistant",
-      content: "Vela holds 31% share of voice in the adaptogen-beverage category this month, up 4pt — driven by the #VelaGlow campaign and the Maren Cole collab. The recall rumor briefly closed the gap with the #2 competitor, but share recovered after the holding statement.",
-      cards: [
-        { t: "Share of voice", v: "31%", s: "+4pt MoM", intent: "positive" },
-        { t: "Nearest rival", v: "22%", s: "flat MoM", intent: "neutral" },
-      ],
-      sources: ["Analytics · Platform comparison"],
-    },
-  ],
-  "Q2 influencer shortlist": [
-    { id: "c3_u", role: "user", content: "Which influencers are driving engagement?" },
-    {
-      id: "c3_a", role: "assistant",
-      content: "Three accounts drove 41% of campaign reach. @tech_maren (418K) is your strongest advocate this week with a 2.1M-reach post. @sarah.k.wellness delivered the highest engagement rate at 11.2%. Watch @dailyhealthnut — large reach but currently negative on sugar content.",
-      cards: [
-        { t: "@tech_maren", v: "2.1M", s: "reach · positive", intent: "positive" },
-        { t: "@sarah.k.wellness", v: "11.2%", s: "engagement rate", intent: "positive" },
-      ],
-      sources: ["Engagement · Top creators"],
-    },
-  ],
+// Saved topics in the RECENT sidebar. Opening one asks the live assistant
+// again, so the answer always reflects the current data.
+const savedTopics: Record<string, string> = {
+  "Negative spike investigation": "Identify emerging risks for our brand.",
+  "#VelaGlow campaign recap": "Summarize audience sentiment for the last campaign.",
+  "Platform breakdown": "Which platform is loudest?",
+  "Influencer shortlist": "Which influencers are driving engagement?",
 };
 
-const chatHistory = Object.keys(chatArchive);
+const chatHistory = Object.keys(savedTopics);
+const FIRST_TOPIC = "Negative spike investigation";
 
 export default function AssistantPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialChat);
-  const [activeHistory, setActiveHistory] = useState<string | null>("Negative spike investigation");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeHistory, setActiveHistory] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -98,17 +47,20 @@ export default function AssistantPage() {
   }
 
   function openHistory(title: string) {
-    setMessages(chatArchive[title]);
-    setActiveHistory(title);
+    setMessages([]);
+    send(savedTopics[title], title);
   }
+
+  // Open on the first saved topic so the page shows a real answer straight away.
+  useEffect(() => { openHistory(FIRST_TOPIC); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
 
-  async function send(text?: string) {
+  async function send(text?: string, topic: string | null = null) {
     const prompt = (text ?? input).trim();
     if (!prompt || thinking) return;
     setInput("");
-    setActiveHistory(null);
+    setActiveHistory(topic);
     setMessages((m) => [...m, { id: `u_${Date.now()}`, role: "user", content: prompt }]);
     setThinking(true);
     const reply = await askAssistant(prompt);

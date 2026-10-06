@@ -1,16 +1,46 @@
 """The data assistant behind /api/assistant.
 
 Questions are routed by keyword to a handler, and every handler answers
-from the database (mentions, influencers, crises), so the numbers in the
+from the database (the last 7 days of mention history, influencers, crises,
+and the inbox), so the numbers in the
 reply always match what the rest of the app shows. Nothing is sent to an
 outside AI service.
 """
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
+from datetime import timedelta
+from functools import lru_cache
 
-from .models import Crisis, Influencer, Mention
+from django.utils import timezone
+
+from .models import Crisis, Influencer, Mention, MentionEvent
 from .sentiment import analyze
+
+
+@dataclass
+class Post:
+    text: str
+    sentiment: str
+    platform: str
+    topics: list
+
+
+def _recent_posts() -> tuple[list[Post], str]:
+    """The last 7 days of mention history, or the inbox if there is no history."""
+    since = timezone.now() - timedelta(days=7)
+    rows = MentionEvent.objects.filter(created_at__gt=since).values_list("text", "sentiment", "platform", "hashtags")
+    posts = [Post(t, s, p, h) for t, s, p, h in rows]
+    if posts:
+        return posts, "the last 7 days"
+    return [Post(m.content, m.sentiment, m.platform, m.topics) for m in Mention.objects.all()], "the inbox"
+
+
+@lru_cache(maxsize=4096)
+def _risk_terms(text: str) -> tuple:
+    # Thousands of posts share a few hundred distinct texts, so cache the scan.
+    return tuple(analyze(text).risks)
 
 PLATFORM_NAMES = {
     "twitter": "X / Twitter", "instagram": "Instagram", "tiktok": "TikTok",
@@ -22,23 +52,19 @@ def _pct(part: int, whole: int) -> int:
     return round(100 * part / whole) if whole else 0
 
 
-def _sentiment_counts(mentions) -> Counter:
-    return Counter(m.sentiment for m in mentions)
-
-
 def sentiment_summary() -> dict:
-    mentions = list(Mention.objects.all())
-    total = len(mentions)
-    counts = _sentiment_counts(mentions)
+    posts, scope = _recent_posts()
+    total = len(posts)
+    counts = Counter(p.sentiment for p in posts)
     pos, neg = counts.get("positive", 0), counts.get("negative", 0)
     neu = total - pos - neg
-    topics = Counter(t for m in mentions if m.sentiment == "positive" for t in m.topics)
+    topics = Counter(t for p in posts if p.sentiment == "positive" for t in p.topics)
     driver = topics.most_common(1)[0][0] if topics else "n/a"
-    worry = Counter(t for m in mentions if m.sentiment == "negative" for t in m.topics)
+    worry = Counter(t for p in posts if p.sentiment == "negative" for t in p.topics)
     worry_topic = worry.most_common(1)[0][0] if worry else None
 
     content = (
-        f"Across the {total} tracked mentions, sentiment is {_pct(pos, total)}% positive, "
+        f"Across {total:,} mentions in {scope}, sentiment is {_pct(pos, total)}% positive, "
         f"{_pct(neu, total)}% neutral or mixed and {_pct(neg, total)}% negative. "
         f"The most common topic in positive posts is \"{driver}\"."
     )
@@ -49,9 +75,9 @@ def sentiment_summary() -> dict:
         "cards": [
             {"t": "Net sentiment", "v": f"{_pct(pos, total) - _pct(neg, total):+d}", "s": "pos minus neg", "intent": "positive" if pos >= neg else "critical"},
             {"t": "Top driver", "v": driver, "s": f"{topics[driver] if topics else 0} positive posts", "intent": "positive"},
-            {"t": "Negative", "v": f"{_pct(neg, total)}%", "s": f"{neg} of {total} mentions", "intent": "warning" if neg else "positive"},
+            {"t": "Negative", "v": f"{_pct(neg, total)}%", "s": f"{neg:,} of {total:,} mentions", "intent": "warning" if neg else "positive"},
         ],
-        "sources": ["Mentions · all platforms"],
+        "sources": [f"Mentions · {scope}"],
     }
 
 
@@ -79,14 +105,12 @@ def influencers() -> dict:
 
 
 def risks() -> dict:
-    flagged = []
-    for m in Mention.objects.all():
-        result = analyze(m.content)
-        if result.risks or m.priority == "critical":
-            flagged.append((m, result))
+    posts, scope = _recent_posts()
+    flagged = [(p, _risk_terms(p.text)) for p in posts]
+    flagged = [(p, r) for p, r in flagged if r]
 
     crisis = Crisis.objects.exclude(status__in=["resolved", "closed"]).first()
-    terms = Counter(term for _, r in flagged for term in r.risks)
+    terms = Counter(term for _, r in flagged for term in r)
 
     if not flagged and not crisis:
         return {
@@ -96,7 +120,7 @@ def risks() -> dict:
         }
 
     n = len(flagged)
-    parts = [f"{n} mention{'s' if n != 1 else ''} {'contain' if n != 1 else 'contains'} risk language or {'are' if n != 1 else 'is'} marked critical."]
+    parts = [f"{n:,} of {len(posts):,} mentions in {scope} ({_pct(n, len(posts))}%) contain risk language."]
     if terms:
         parts.append("Most frequent risk terms: " + ", ".join(f"\"{t}\" ({c})" for t, c in terms.most_common(3)) + ".")
     if crisis:
@@ -104,32 +128,34 @@ def risks() -> dict:
     return {
         "content": " ".join(parts),
         "cards": [
-            {"t": f"\"{t}\"", "v": str(c), "s": "mentions", "intent": "critical"} for t, c in terms.most_common(2)
-        ] or [{"t": "Critical mentions", "v": str(len(flagged)), "s": "need review", "intent": "critical"}],
+            {"t": f"\"{t}\"", "v": f"{c:,}", "s": "mentions", "intent": "critical"} for t, c in terms.most_common(3)
+        ] or [{"t": "Open incident", "v": crisis.title if crisis else "-", "s": "Crisis Center", "intent": "critical"}],
         "sources": ["Mentions · risk scan", "Crisis Center"],
         "action": {"label": "Open Crisis Center", "href": "/crisis"},
     }
 
 
 def platforms() -> dict:
-    mentions = list(Mention.objects.all())
-    by_platform = Counter(m.platform for m in mentions)
-    neg_by_platform = Counter(m.platform for m in mentions if m.sentiment == "negative")
+    posts, scope = _recent_posts()
+    by_platform = Counter(p.platform for p in posts)
+    neg_by_platform = Counter(p.platform for p in posts if p.sentiment == "negative")
+    if not by_platform:
+        return fallback()
     top, count = by_platform.most_common(1)[0]
-    content = (
-        f"{PLATFORM_NAMES.get(top, top)} has the most mentions ({count} of {len(mentions)}). "
-        + (
-            f"Negative posts are concentrated on {PLATFORM_NAMES.get(neg_by_platform.most_common(1)[0][0])}."
-            if neg_by_platform else "No platform has a cluster of negative posts."
-        )
-    )
+    content = f"{PLATFORM_NAMES.get(top, top)} has the most mentions in {scope} ({count:,} of {len(posts):,}). "
+    if neg_by_platform:
+        worst, n = neg_by_platform.most_common(1)[0]
+        content += f"The most negative posts are on {PLATFORM_NAMES.get(worst, worst)} ({n:,})."
+    else:
+        content += "No platform has a cluster of negative posts."
     return {
         "content": content,
         "cards": [
-            {"t": PLATFORM_NAMES.get(p, p), "v": str(c), "s": f"{neg_by_platform.get(p, 0)} negative", "intent": "warning" if neg_by_platform.get(p) else "positive"}
+            {"t": PLATFORM_NAMES.get(p, p), "v": f"{c:,}", "s": f"{neg_by_platform.get(p, 0):,} negative",
+             "intent": "warning" if neg_by_platform.get(p, 0) > c * 0.2 else "positive"}
             for p, c in by_platform.most_common(3)
         ],
-        "sources": ["Mentions · by platform"],
+        "sources": [f"Mentions · by platform, {scope}"],
     }
 
 
@@ -151,16 +177,17 @@ def engagement_tips() -> dict:
 
 
 def fallback() -> dict:
-    total = Mention.objects.count()
-    neg = Mention.objects.filter(sentiment="negative").count()
+    posts, scope = _recent_posts()
+    total = len(posts)
+    neg = sum(p.sentiment == "negative" for p in posts)
     return {
         "content": (
-            f"I'm tracking {total} mentions right now, {neg} of them negative. "
+            f"I'm tracking {total:,} mentions in {scope}, {neg:,} of them negative. "
             "Ask me about sentiment, influencers, risks, platforms or how to improve engagement."
         ),
         "cards": [
-            {"t": "Mentions", "v": str(total), "s": "tracked", "intent": "positive"},
-            {"t": "Negative", "v": str(neg), "s": "mentions", "intent": "warning" if neg else "positive"},
+            {"t": "Mentions", "v": f"{total:,}", "s": scope, "intent": "positive"},
+            {"t": "Negative", "v": f"{neg:,}", "s": "mentions", "intent": "warning" if neg else "positive"},
         ],
         "sources": ["Overview"],
     }

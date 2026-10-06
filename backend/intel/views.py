@@ -9,7 +9,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import assistant, mock_data
+from . import analytics, assistant, mock_data
 from .sentiment import analyze
 from .models import (
     Alert, AlertRule, AuditLog, Crisis, Integration, Influencer, Mention, Report, ScheduledReport, TeamUser,
@@ -30,60 +30,59 @@ from .serializers import (
 
 class KpisView(APIView):
     def get(self, request):
-        return Response(mock_data.KPIS)
+        return Response(analytics.kpis())
 
 
 class BrandHealthView(APIView):
     def get(self, request):
-        return Response(mock_data.BRAND_HEALTH)
+        return Response(analytics.brand_health())
 
 
 class MentionVolumeView(APIView):
     def get(self, request):
         range_key = request.query_params.get("range", "7d")
-        days = mock_data.RANGE_DAYS.get(range_key, 14)
-        return Response(mock_data.mention_volume(days))
+        return Response(analytics.mention_volume(range_key))
 
 
 class EngagementSeriesView(APIView):
     def get(self, request):
         range_key = request.query_params.get("range", "7d")
-        return Response(mock_data.engagement_series(range_key))
+        return Response(analytics.engagement_series(range_key))
 
 
 class SentimentDistributionView(APIView):
     def get(self, request):
-        return Response(mock_data.SENTIMENT_DISTRIBUTION)
+        return Response(analytics.sentiment_distribution())
 
 
 class PlatformBreakdownView(APIView):
     def get(self, request):
-        return Response(mock_data.PLATFORM_BREAKDOWN)
+        return Response(analytics.platform_breakdown())
 
 
 class TrendsView(APIView):
     def get(self, request):
-        return Response(mock_data.TRENDS)
+        return Response(analytics.trends())
 
 
 class LiveFeedView(APIView):
     def get(self, request):
-        return Response(mock_data.LIVE_FEED)
+        return Response(analytics.live_feed())
 
 
 class HashtagsView(APIView):
     def get(self, request):
-        return Response(mock_data.HASHTAGS)
+        return Response(analytics.hashtags())
 
 
 class SentimentBarsView(APIView):
     def get(self, request):
-        return Response(mock_data.SENTIMENT_BARS)
+        return Response(analytics.sentiment_bars())
 
 
 class PlatformComparisonView(APIView):
     def get(self, request):
-        return Response(mock_data.PLATFORM_COMPARISON)
+        return Response(analytics.platform_comparison())
 
 
 class ReportTypesView(APIView):

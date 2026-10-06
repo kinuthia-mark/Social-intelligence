@@ -25,16 +25,17 @@ jobs:
       - run: python manage.py test
 
   frontend:
-    name: Next.js type check and build
+    name: Next.js type check, unit tests and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
 
   docker:

@@ -24,6 +24,8 @@ export default function DashboardPage() {
   const trends = useTrends();
   const feed = useLiveFeed();
   const alerts = useAlerts();
+  // Reach for the same 7-day window, taken from the KPI the API already computed.
+  const reach = kpis.data?.find((k) => k.id === "reach")?.value;
 
   return (
     <PageContainer className="flex flex-col gap-3.5">
@@ -39,7 +41,12 @@ export default function DashboardPage() {
         <Card className="flex min-h-[300px] flex-col p-[16px_18px]">
           <div className="mb-1 flex flex-wrap items-center gap-3">
             <span className="text-[13px] font-semibold">Conversation volume</span>
-            <span className="mono text-[12px] text-[var(--color-muted)]">48,210 mentions · 12.4M reach</span>
+            {volume.data && (
+              <span className="mono text-[12px] text-[var(--color-muted)]">
+                {volume.data.reduce((sum, p) => sum + Number(p.mentions), 0).toLocaleString()} mentions
+                {reach && <> · {reach} reach</>}
+              </span>
+            )}
             <div className="ml-auto flex gap-3 text-[11px] text-[var(--color-muted)]">
               <Legend color={PALETTE.primary} label="Total" />
               <Legend color={PALETTE.critical} label="Negative" />
@@ -65,7 +72,7 @@ export default function DashboardPage() {
           {sentiment.data ? (
             <div className="flex items-center gap-4">
               <div className="w-[108px] shrink-0">
-                <Donut height={108} data={sentiment.data} centerValue="62%" centerLabel="positive" />
+                <Donut height={108} data={sentiment.data} centerValue={`${sentiment.data.find((s) => s.name === "Positive")?.value ?? 0}%`} centerLabel="positive" />
               </div>
               <div className="flex-1 space-y-2.5">
                 {sentiment.data.map((s) => (
@@ -127,7 +134,8 @@ export default function DashboardPage() {
           <div className="mb-2.5 flex items-center gap-3">
             <span className="text-[13px] font-semibold">Live mentions</span>
             <span className="mono ml-auto flex items-center gap-1.5 text-[10px] text-[var(--color-warning)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)] live-dot" /> 3.2K/hr
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)] live-dot" />
+              {volume.data?.length ? `${Math.round(Number(volume.data[volume.data.length - 1].mentions) / 24)}/hr` : "…"}
             </span>
             <Link href="/mentions" className="text-[11px] text-[var(--color-primary-ink)]">Open inbox →</Link>
           </div>
