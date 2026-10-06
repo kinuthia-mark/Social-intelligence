@@ -8,17 +8,15 @@ import { Skeleton } from "@/components/ui/misc";
 import { LineTrend, Sparkline, PALETTE } from "@/components/charts/Charts";
 import { Heatmap } from "@/components/charts/Heatmap";
 import {
-  useMentionVolume, useSentimentBars, usePlatformComparison, useHashtags, useInfluencers,
+  useKpis, useMentionVolume, useSentimentBars, usePlatformComparison, useHashtags, useInfluencers,
 } from "@/lib/queries";
 
-const KPIS = [
-  { label: "Mention volume", value: "48.2K", delta: "+12.4%", c: "var(--color-positive)" },
-  { label: "Total reach", value: "12.4M", delta: "+8.1%", c: "var(--color-positive)" },
-  { label: "Share of voice", value: "31%", delta: "+4pt", c: "var(--color-positive)" },
-  { label: "Avg sentiment", value: "62%", delta: "−4pt", c: "var(--color-warning)" },
-];
+// The four headline numbers come from the same KPI endpoint as the overview.
+const ANALYTICS_KPIS = ["mentions", "reach", "positive", "engagement"];
+const intentColor = { positive: "var(--color-positive)", warning: "var(--color-warning)", critical: "var(--color-critical)" } as const;
 
 export default function AnalyticsPage() {
+  const kpis = useKpis();
   const volume = useMentionVolume();
   const bars = useSentimentBars();
   const platforms = usePlatformComparison();
@@ -28,15 +26,17 @@ export default function AnalyticsPage() {
   return (
     <PageContainer className="flex flex-col gap-3.5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {KPIS.map((k) => (
-          <Card key={k.label} className="p-[14px_16px]">
-            <div className="mb-2 text-[11px] text-[var(--color-muted)]">{k.label}</div>
-            <div className="flex items-baseline gap-2.5">
-              <span className="mono text-[23px] font-semibold tracking-[-0.02em]">{k.value}</span>
-              <span className="mono text-[11px]" style={{ color: k.c }}>{k.delta}</span>
-            </div>
-          </Card>
-        ))}
+        {kpis.data
+          ? kpis.data.filter((k) => ANALYTICS_KPIS.includes(k.id)).map((k) => (
+            <Card key={k.id} className="p-[14px_16px]">
+              <div className="mb-2 text-[11px] text-[var(--color-muted)]">{k.label}</div>
+              <div className="flex items-baseline gap-2.5">
+                <span className="mono text-[23px] font-semibold tracking-[-0.02em]">{k.value}</span>
+                <span className="mono text-[11px]" style={{ color: intentColor[k.intent as keyof typeof intentColor] ?? intentColor.positive }}>{k.delta}</span>
+              </div>
+            </Card>
+          ))
+          : Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[74px] rounded-[14px]" />)}
       </div>
 
       <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.4fr_1fr]">
@@ -63,7 +63,15 @@ export default function AnalyticsPage() {
               ))}
             </div>
           ) : <Skeleton className="h-[180px]" />}
-          <div className="mono mt-1.5 flex justify-between text-[10px] text-[var(--color-faint)]"><span>W1</span><span>recall →</span><span>W14</span></div>
+          <div className="mono mt-1.5 flex justify-between text-[10px] text-[var(--color-faint)]">
+            <span>W1</span>
+            {/* Point at the week with the highest negative share, wherever it falls. */}
+            {bars.data?.length ? (() => {
+              const worst = bars.data.reduce((a, b) => (b.negative > a.negative ? b : a));
+              return <span style={{ color: "var(--color-critical)" }}>peak negative: {worst.week} ({worst.negative}%)</span>;
+            })() : <span />}
+            <span>W14</span>
+          </div>
         </Card>
       </div>
 

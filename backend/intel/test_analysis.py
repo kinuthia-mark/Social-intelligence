@@ -100,9 +100,12 @@ class AssistantTests(AuthedTestCase):
         return res.data
 
     def test_sentiment_answer_uses_real_counts(self):
-        total = Mention.objects.count()
+        from datetime import timedelta
+        from django.utils import timezone
+        from intel.models import MentionEvent
+        total = MentionEvent.objects.filter(created_at__gt=timezone.now() - timedelta(days=7)).count()
         reply = self.ask("Summarize audience sentiment for the last campaign.")
-        self.assertIn(f"{total} tracked mentions", reply["content"])
+        self.assertIn(f"Across {total:,} mentions in the last 7 days", reply["content"])
 
     def test_risk_question_finds_the_recall_rumour(self):
         reply = self.ask("Identify emerging risks for our brand.")
