@@ -244,6 +244,8 @@ export interface AuditLog {
 }
 
 export interface PostAnalysis {
+  /** "url" for the sample post, "text" for pasted text analysed by the backend. */
+  source?: "url" | "text";
   url: string;
   platform: Platform;
   author: Author;

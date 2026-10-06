@@ -237,5 +237,6 @@ class Command(BaseCommand):
         for row in AUDIT_LOGS:
             AuditLog.objects.create(**row)
 
-        self.stdout.write(self.style.SUCCESS("Seeded socialNET demo data."))
-        self.stdout.write(f"Demo login: ochiengs@vela.co / {DEMO_PASSWORD}")
+        if options.get("verbosity", 1) > 0:
+            self.stdout.write(self.style.SUCCESS("Seeded socialNET demo data."))
+            self.stdout.write(f"Demo login: ochiengs@vela.co / {DEMO_PASSWORD}")

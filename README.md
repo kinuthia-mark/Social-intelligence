@@ -1,22 +1,69 @@
 # socialNET Intelligence
 
-Brand monitoring and social media intelligence platform. Monitor mentions, track sentiment, manage crises, and report to leadership — all from one dashboard.
+[![CI](https://github.com/kinuthia-mark/Social-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/kinuthia-mark/Social-intelligence/actions/workflows/ci.yml)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![Django](https://img.shields.io/badge/Django-5.1-092E20?logo=django&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
-Think Brandwatch or Sprout Social, but built for speed.
+A brand monitoring and social media intelligence dashboard. It collects mentions of a brand, scores their sentiment, flags the ones that could turn into a crisis, and produces reports for leadership.
+
+The idea is similar to Brandwatch or Sprout Social, scaled down for a single team. The frontend is Next.js, the API is Django REST Framework, and sign-in uses JWTs kept in httpOnly cookies.
+
+![socialNET overview dashboard](docs/screenshots/dashboard.png)
+
+**Highlights**
+
+- 14 screens with a dark, data-dense design, a command palette (Ctrl+K) and a mobile layout
+- A **sentiment and risk engine** written from scratch (`backend/intel/sentiment.py`): paste any post and get a sentiment split, emotions, topics, risk terms and recommended actions. It handles negation ("not good"), intensifiers, shouting and emoji, and needs no API key
+- A **data assistant** that answers questions about sentiment, influencers, risks and platforms by querying the database, so its numbers always match the dashboards
+- JWT auth where the browser never sees a token: Next.js route handlers keep them in httpOnly cookies, and refresh tokens are rotated and blacklisted on logout
+- 30 backend tests, a TypeScript check, a production build and a full Docker Compose run in CI on every push
 
 ---
 
-## What it is
+## Screenshots
 
-You have a brand. People talk about it on social media. Most of that noise is irrelevant. Some of it is a PR crisis.
+| Mentions inbox with detail panel | Crisis command centre |
+|---|---|
+| ![Mentions inbox](docs/screenshots/mention-detail.png) | ![Crisis centre](docs/screenshots/crisis.png) |
+| **Post analysis of pasted text** | **Data assistant** |
+| ![Post analysis](docs/screenshots/post-analysis-text.png) | ![Assistant](docs/screenshots/assistant.png) |
+| **Analytics** | **Landing page** |
+| ![Analytics](docs/screenshots/analytics.png) | ![Landing page](docs/screenshots/landing.png) |
 
-socialNET watches Twitter, Instagram, LinkedIn, etc. for mentions of your brand. It filters the noise, flags the crisis, shows you what your audience actually thinks, and hands you a report to send to your CEO.
+<details>
+<summary>More screens: alerts, reports, engagement, admin, mobile</summary>
 
-16 screens. Everything you need to manage brand reputation. Nothing you don't.
+| | |
+|---|---|
+| ![Alerts](docs/screenshots/alerts.png) | ![Reports](docs/screenshots/reports.png) |
+| ![Engagement](docs/screenshots/engagement.png) | ![Admin](docs/screenshots/admin.png) |
+
+<p align="center"><img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on a phone" width="300"></p>
+</details>
+
+---
+
+## What it does
+
+A brand gets talked about across X (Twitter), Instagram, LinkedIn, Reddit and other platforms. Most of those posts are harmless. A few of them are the start of a PR problem.
+
+socialNET gathers those mentions in one place, filters out the noise, raises an alert when something looks like a crisis, shows what the audience actually thinks, and generates a PDF report that can go straight to management.
 
 ---
 
 ## Quick start
+
+### With Docker (one command)
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:3000` and sign in with the demo account below. Compose builds the Django API (served by Gunicorn) and the Next.js app, and loads the demo dataset on start.
+
+### Without Docker
 
 You need two terminals running at the same time.
 
@@ -33,7 +80,7 @@ python -m venv .venv
 .venv\Scripts\python manage.py runserver 8500
 ```
 
-That's running on `http://localhost:8500`.
+The API is now running on `http://localhost:8500`.
 
 ### Frontend (Next.js)
 
@@ -44,7 +91,7 @@ npm install
 npm run dev
 ```
 
-Go to `http://localhost:3000`.
+Open `http://localhost:3000`.
 
 ### Sign in
 
@@ -52,7 +99,7 @@ Use the seeded demo account:
 - **Email:** ochiengs@vela.co
 - **Password:** vela-demo-2026
 
-(Everyone in the demo dataset shares that password. Or register a new account.)
+Every account in the demo dataset uses that password. You can also register a new account.
 
 ---
 
@@ -61,7 +108,7 @@ Use the seeded demo account:
 ```mermaid
 graph TB
     subgraph CLIENT["Browser"]
-        NEXTJS["Next.js 15<br/>React 19<br/>TypeScript"]
+        NEXTJS["Next.js 16<br/>React 19<br/>TypeScript"]
         COMPS["Components<br/>Sidebar, Charts,<br/>Forms, Mentions"]
         STATE["Zustand<br/>UI State"]
         QUERY["TanStack Query<br/>Server State"]
@@ -102,16 +149,16 @@ graph TB
     style DB fill:#1565c0,color:#fff,stroke:#0c3c88
 ```
 
-**The flow:**
-1. You use the app (browser)
-2. Components request data via TanStack Query
+**How a request travels:**
+1. You use the app in the browser
+2. Components ask for data through TanStack Query
 3. Queries call `src/lib/api.ts`
-4. API layer hits Next.js `/api/*` endpoints
-5. Next.js rewrites to Django (`/api/auth/*` for cookies, everything else for data)
-6. Django validates your JWT cookie and returns JSON
-7. Components re-render with new data
+4. The API layer calls the Next.js `/api/*` endpoints
+5. Next.js handles `/api/auth/*` itself (to set cookies) and rewrites everything else to Django
+6. Django checks the JWT cookie and returns JSON
+7. Components re-render with the new data
 
-Your browser **never** talks to Django directly. All requests go through Next.js first.
+The browser never talks to Django directly. Every request goes through Next.js first.
 
 ---
 
@@ -133,7 +180,7 @@ sequenceDiagram
     Handler->>Handler: Set httpOnly cookie<br/>refresh_token (7d)
     Handler-->>Browser: 200 OK
     Browser->>Browser: Redirect to /dashboard
-    
+
     Note over Browser,Django: On every data request:
     Browser->>Browser: Browser sends cookies<br/>automatically
     Browser->>Browser: Next.js rewrite to Django
@@ -143,15 +190,15 @@ sequenceDiagram
 ```
 
 **Key points:**
-- Tokens live in **httpOnly cookies** — your browser can't read them (safer)
-- Access token lasts 15 minutes
-- Refresh token lasts 7 days
-- When access expires, `src/lib/api.ts` auto-refreshes and retries (you don't see it)
-- CSRF protection via `SameSite=Lax` on cookies
+- Tokens live in **httpOnly cookies**, so page scripts cannot read them
+- The access token lasts 15 minutes, the refresh token 7 days
+- When the access token expires, `src/lib/api.ts` refreshes it and retries the request
+- Refresh tokens are rotated, and the old one is blacklisted on logout
+- Cookies are `SameSite=Lax`, which blocks cross-site form posts
 
 ---
 
-## The 16 screens
+## The screens
 
 | Route | What it does |
 |-------|------------|
@@ -159,24 +206,18 @@ sequenceDiagram
 | `/login` | Sign in |
 | `/register` | Create account |
 | `/dashboard` | KPIs, trends, executive summary |
-| `/mentions` | Browse all mentions, filter by sentiment/platform/date |
-| `/mentions/:id` | Detail view of a single mention (slide-over panel) |
-| `/analytics` | Deep dive: sentiment breakdown, audience demographics, influencers, heatmaps |
-| `/engagement` | Track replies, shares, engagement rate |
-| `/alerts` | Notification center, set alert rules |
-| `/reports` | Generate & schedule reports for leadership |
-| `/post-analysis` | AI analysis of your own posts |
-| `/assistant` | Chat with the AI assistant |
-| `/crisis` | Crisis management command center |
-| `/admin/users` | Manage team members |
-| `/admin/integrations` | Connect Twitter, Instagram, LinkedIn accounts |
-| `/admin/audit` | View audit logs |
-| `/settings` | Profile & preferences |
+| `/mentions` | Browse all mentions, filter by sentiment, platform and date. Clicking one opens a slide-over with details, a suggested reply and team notes |
+| `/analytics` | Sentiment breakdown, platform comparison, influencers, heatmaps |
+| `/engagement` | Replies, shares and engagement rate over time |
+| `/alerts` | Notification centre and alert rules |
+| `/reports` | Generate, download (PDF) and schedule reports |
+| `/post-analysis` | Analysis of a draft or published post |
+| `/assistant` | Chat with the assistant about the brand's data |
+| `/crisis` | Crisis command centre with a timeline of events |
+| `/admin` | Three tabs: team members, connected social accounts, audit log |
+| `/profile` | Your name, email and preferences |
 
-Every screen has:
-- Loading skeletons (while data fetches)
-- Empty states (no data to show)
-- Responsive design (desktop → tablet → mobile)
+Every screen has loading skeletons, empty states and a layout that works on desktop, tablet and phone. A command palette (Ctrl+K) jumps between screens.
 
 ---
 
@@ -186,57 +227,55 @@ Every screen has:
 .
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/
-│   │   │   ├── login/
-│   │   │   └── register/
-│   │   ├── (app)/
-│   │   │   ├── dashboard/
-│   │   │   ├── mentions/
-│   │   │   ├── analytics/
-│   │   │   ├── crisis/
-│   │   │   ├── admin/
-│   │   │   └── settings/
+│   │   ├── (auth)/           ← login and register
+│   │   ├── (app)/            ← one folder per screen (dashboard, mentions, crisis, admin, profile ...)
 │   │   ├── api/
 │   │   │   └── auth/         ← JWT cookie handlers (login, register, refresh, logout)
+│   │   ├── globals.css       ← Design tokens (colours, spacing, fonts)
 │   │   ├── layout.tsx        ← Root layout + providers
 │   │   └── page.tsx          ← Landing page
 │   ├── components/
-│   │   ├── layout/           ← Sidebar, Topbar, PageHeading
-│   │   ├── ui/               ← Button, Card, Badge, Avatar, Modal, Sheet, etc.
-│   │   ├── charts/           ← Recharts wrappers
-│   │   ├── dashboard/        ← Dashboard-specific components
-│   │   └── mentions/         ← Mention card, detail view
+│   │   ├── layout/           ← Sidebar, Topbar, PageHeading, CommandPalette, nav.ts
+│   │   ├── ui/               ← Button, Card, Badge, Avatar, Sheet, etc.
+│   │   ├── charts/           ← Recharts wrappers and the heatmap
+│   │   ├── dashboard/        ← KPI cards and the brand health gauge
+│   │   └── mentions/         ← Mention card and detail view
 │   ├── lib/
-│   │   ├── api.ts            ← ⭐ THE SEAM: all backend calls go here
+│   │   ├── api.ts            ← Every backend call goes through here
 │   │   ├── queries.ts        ← TanStack Query hooks (useKpis, useMentions, etc.)
 │   │   ├── store.ts          ← Zustand stores (dateRange, sidebarOpen, etc.)
-│   │   ├── types.ts          ← TypeScript interfaces (mirrors Django models)
-│   │   ├── authCookies.ts    ← Cookie constants shared with route handlers
+│   │   ├── types.ts          ← TypeScript interfaces (mirror the Django models)
+│   │   ├── authCookies.ts    ← Cookie names shared with the route handlers
+│   │   ├── csv.ts            ← CSV export helper
 │   │   └── utils.ts          ← Formatting helpers
-│   ├── middleware.ts         ← Redirects unauthenticated users to /login
-│   └── app.globals.css       ← Design tokens (colors, spacing, fonts)
+│   └── middleware.ts         ← Redirects signed-out users to /login
 ├── backend/
 │   ├── config/               ← Django project settings
-│   ├── accounts/             ← Login, register, JWT logic
-│   ├── intel/                ← Main app (models, views, serializers)
+│   ├── accounts/             ← Login, register, JWT logic, tests
+│   ├── intel/                ← Main app
 │   │   ├── models.py         ← Mention, Alert, Report, Crisis, etc.
 │   │   ├── views.py          ← API endpoints
-│   │   ├── serializers.py    ← JSON serialization
-│   │   ├── mock_data.py      ← Canned responses (KPIs, charts, AI replies)
-│   │   └── management/commands/seed_data.py  ← Load demo dataset
+│   │   ├── serializers.py    ← JSON serialisation
+│   │   ├── sentiment.py      ← Sentiment, emotion, topic and risk engine
+│   │   ├── assistant.py      ← Data assistant: question router + DB queries
+│   │   ├── mock_data.py      ← Fixed demo values (KPIs, charts, sample post)
+│   │   ├── tests.py          ← API access tests
+│   │   ├── test_analysis.py  ← Sentiment engine, post analysis and assistant tests
+│   │   └── management/commands/seed_data.py  ← Loads the demo dataset
 │   └── manage.py
-├── next.config.mjs           ← Rewrite /api/* to Django
+├── .github/workflows/ci.yml  ← Backend tests, frontend build, Docker Compose run
+├── docker-compose.yml        ← Whole stack with demo data
+├── Dockerfile                ← Next.js image (backend/Dockerfile for the API)
+├── docs/screenshots/         ← Images used in this README
+├── next.config.mjs           ← Rewrites /api/* to Django
 ├── package.json
 ├── tsconfig.json
-├── tailwind.config.ts        ← Design system
 └── README.md
 ```
 
 ---
 
 ## Data flow inside the app
-
-### Component → UI Update (in 3 steps)
 
 ```mermaid
 graph LR
@@ -263,83 +302,169 @@ graph LR
 - **Server state** (mentions, KPIs, reports) → **TanStack Query**
   - Cached automatically
   - Invalidated when data changes
-  - Refetches when you revisit the page
+  - Refetched when you come back to a page
 
-- **UI state** (which sidebar is open, date range, theme) → **Zustand**
-  - Persists to localStorage
-  - Minimal, no side effects
+- **UI state** (sidebar, date range, theme) → **Zustand**
+  - Saved to localStorage
+  - Small stores with no side effects
 
-- **Form state** (login, register, settings) → **React Hook Form**
-  - Validation
-  - Error messages
+- **Form state** (login, register, profile) → **React Hook Form**
+  - Validation and error messages
   - Submit handling
 
 ---
 
 ## The backend
 
-`backend/` is small and focused. It's not a monolith.
+`backend/` is a small Django project with two apps: `accounts` for sign-in and `intel` for everything else.
 
-**Model-backed data** (SQLite, queryable):
-- `Mention` — One social media post mentioning your brand
-- `Alert` / `AlertRule` — Notifications and rules that trigger them
-- `Report` / `ScheduledReport` — Reports, saved and scheduled
-- `Crisis` — Crisis incidents
-- `TeamUser` — Team members
-- `Integration` — Connected social accounts
-- `AuditLog` — Who did what when
+**Data stored in the database** (SQLite, queryable):
+- `Mention` – one social media post that mentions the brand
+- `Alert` / `AlertRule` – notifications and the rules that trigger them
+- `Report` / `ScheduledReport` – saved and scheduled reports
+- `Crisis` – crisis incidents and their timeline
+- `TeamUser` – team members
+- `Integration` – connected social accounts
+- `AuditLog` – who did what, and when
 
-Loaded by `python manage.py seed_data` with the Vela demo dataset.
+`python manage.py seed_data` fills these with the Vela demo dataset.
 
-**Code-backed data** (in `mock_data.py`, not queryable):
+**Data defined in code** (`mock_data.py`):
 - KPI cards (follower growth, sentiment trend)
 - Brand health score
 - Mention volume chart
-- Sentiment breakdown
-- Platform breakdown
+- Sentiment and platform breakdowns
 - Trending hashtags
-- AI assistant responses
-- Sample post analysis
+- The sample post shown when a link is analysed
 
-These are hardcoded demo values that the API returns. In production, these would hit a real analytics service or database.
+These are fixed demo values. A production version would compute them from real platform data.
 
-**Every endpoint** requires authentication (`IsAuthenticated`) except `/api/auth/register`, `/api/auth/login`, and the refresh endpoint.
+**Computed on request:**
+- Post analysis of pasted text (`sentiment.py`)
+- Every assistant answer (`assistant.py`)
+
+---
+
+## The sentiment and risk engine
+
+`backend/intel/sentiment.py` scores short social posts without any model download or API key. It is a lexicon-based analyser tuned for the way people write online:
+
+| Step | What it does | Example |
+|---|---|---|
+| Tokenise | Words, hashtags and @handles | `#VelaGlow`, `@tech_maren` |
+| Lexicon lookup | Each word has a weight from -3 to +3 | `love` +3, `awful` -3, `recall` -2 |
+| Negation | A negator in the three words before flips and softens the weight | "not good" is negative |
+| Intensifiers | "really", "so", "absolutely" multiply the weight | "really good" > "good" |
+| Shouting and emoji | ALL CAPS words count 1.3x; emoji carry their own weight | "GOOD 😍😍" |
+| Exclamation marks | Amplify whichever tone is dominant | "love it!!!" |
+| Neutral share | Shrinks as the text carries more sentiment words | a long factual post stays neutral |
+
+The output is a positive / neutral / negative split that always adds up to 100, a label (positive, negative, mixed or neutral), a confidence score, the top emotions (joy, trust, fear, anger, distrust ...), topics (hashtags plus repeated keywords) and **risk terms** such as recall, contamination, lawsuit or unsafe.
+
+On the hand-labelled demo mentions it agrees with the human label on 7 out of 8 posts, and a test fails if that drops below 75%.
+
+`POST /api/post-analysis` with `{"text": "..."}` runs the engine and turns the result into scores, positive and risk indicators and recommendations:
+
+```json
+{
+  "label": "negative",
+  "sentiment": {"positive": 0, "neutral": 33, "negative": 67, "tone": "Fear"},
+  "risks": ["mentions recall", "mentions sick", "\"got sick\""],
+  "recommendations": [{"title": "Respond before it spreads", "desc": "The post mentions recall, sick. Reply with facts or a source, and flag it to the crisis team."}]
+}
+```
+
+## The data assistant
+
+`backend/intel/assistant.py` routes each question by keyword to a handler that queries the database:
+
+| Question about | Answer is built from |
+|---|---|
+| Risks, crisis, threats | Mentions run through the risk scan, plus any open crisis |
+| Influencers, creators | The `Influencer` table, by impact score, with negative voices flagged |
+| Platforms, channels | Mention counts and negative counts per platform |
+| Improving engagement | Unassigned mentions and positive posts worth amplifying |
+| Sentiment, audience, campaign | Sentiment split and the topics driving each side |
+| Anything else | A short summary and a list of what it can answer |
+
+Because every number comes from the same tables as the dashboards, the assistant cannot contradict them. Swapping the router for an LLM call would only need a change in `assistant.reply()`.
+
+**Every endpoint** requires a signed-in user except register, login, refresh and logout.
 
 ---
 
 ## Tech stack
 
 **Frontend:**
-- Next.js 15 (App Router)
+- Next.js 16 (App Router)
 - React 19
 - TypeScript
-- Tailwind CSS v4 (design system)
+- Tailwind CSS v4
 - Recharts (charts)
 - TanStack Query (server state)
 - Zustand (UI state)
 - React Hook Form (forms)
+- lucide-react (icons)
 
 **Backend:**
-- Django 5.0
-- Django REST Framework (DRF)
-- djangorestframework-simplejwt (JWT)
-- SQLite (demo; swap for Postgres)
+- Django 5.1
+- Django REST Framework
+- djangorestframework-simplejwt (JWT, with refresh token blacklisting)
+- ReportLab (PDF reports)
+- Gunicorn (in the Docker image)
+- SQLite (swap for Postgres in production)
 
-**Both:**
-- Git / GitHub
+**Tooling:**
+- GitHub Actions: Django tests, TypeScript check, `next build`, and a Docker Compose run that signs in and calls the API through the Next.js proxy
+- Docker and Docker Compose
+
+---
+
+## Tests
+
+```bash
+cd backend
+.venv\Scripts\python manage.py test      # Windows
+# .venv/bin/python manage.py test        # macOS/Linux
+```
+
+The backend tests check that:
+
+- registering creates both the login account and the team profile, and refuses a duplicate email
+- login works with email and password and rejects a wrong password
+- the API only accepts the token from the `access_token` cookie, not from an `Authorization` header
+- logging out blacklists the refresh token so it cannot be used again
+- every data endpoint returns 401 to anonymous callers and 200 to the seeded demo user
+- the sentiment engine handles positive, negative, mixed and neutral text, negation, emoji and shouting, finds risk terms, and its percentages always add up to 100
+- the engine agrees with at least 75% of the hand-labelled demo mentions
+- pasted text gets the right label, risk list and recommendations; very long text is rejected
+- the assistant answers sentiment, risk, influencer and platform questions from real counts, and falls back to a summary
+
+For the frontend, `npm run typecheck` runs the TypeScript compiler and `npm run build` makes a production build.
+
+---
+
+## Environment variables
+
+Nothing needs to be set for local development. For a deployment:
+
+| Variable | Used by | Default | Purpose |
+|---|---|---|---|
+| `DJANGO_API_URL` | Next.js | `http://127.0.0.1:8500/api` | Where the `/api/*` rewrite sends requests |
+| `DJANGO_SECRET_KEY` | Django | a dev-only key | Signs the JWTs. Set a long random value in production |
+| `DJANGO_DEBUG` | Django | `1` | Set to `0` in production |
+| `DJANGO_ALLOWED_HOSTS` | Django | `localhost,127.0.0.1,testserver` | Comma-separated host names Django will answer to |
+| `DJANGO_CORS_ORIGINS` | Django | `http://localhost:3000,http://127.0.0.1:3000` | Only matters if something calls Django directly |
 
 ---
 
 ## Deployment
 
-Right now, this is **local development only**. 
+The project currently runs locally. To deploy it:
 
-To deploy:
-- **Frontend:** Deploy the `next build` output to Vercel, Netlify, or any Node host
-- **Backend:** Deploy Django to AWS, Heroku, Railway, or similar
-- Update `DJANGO_API_URL` in the Next.js build to point to your production Django server
-
-See `next.config.mjs` and `backend/config/settings.py` for environment variables.
+- **Frontend:** deploy the `next build` output to Vercel, Netlify or any Node host
+- **Backend:** deploy Django to a host such as Railway, Render or AWS, and switch SQLite for Postgres
+- Set the environment variables above, with `DJANGO_API_URL` pointing at the deployed Django server
 
 ---
 
@@ -348,25 +473,25 @@ See `next.config.mjs` and `backend/config/settings.py` for environment variables
 ### Add a new screen
 
 1. Create a folder in `src/app/(app)/your-route/`
-2. Add `page.tsx` (the page) and `layout.tsx` (optional)
-3. Use existing components from `src/components/` or build new ones
-4. Call hooks from `src/lib/queries.ts` to fetch data
-5. Wire up the sidebar nav in `src/components/layout/nav-config.ts`
+2. Add `page.tsx` (and `layout.tsx` if it needs one)
+3. Reuse components from `src/components/` or add new ones
+4. Fetch data with hooks from `src/lib/queries.ts`
+5. Add it to the sidebar in `src/components/layout/nav.ts`
 
 ### Add a new API endpoint
 
-1. Add a model in `backend/intel/models.py`
+1. Add a model in `backend/intel/models.py` and run `makemigrations`
 2. Add a serializer in `backend/intel/serializers.py`
 3. Add a view in `backend/intel/views.py`
-4. Wire it up in `backend/intel/urls.py`
-5. Add a query hook in `src/lib/queries.ts`
-6. Call it from a component
+4. Register it in `backend/intel/urls.py`
+5. Add a test in `backend/intel/tests.py`
+6. Add a query hook in `src/lib/queries.ts` and call it from a component
 
 ### Change the design system
 
-1. Edit CSS tokens in `src/app/globals.css` (`@theme`)
-2. Update sentiment colors, spacing, etc.
-3. Rebuild
+1. Edit the CSS tokens in `src/app/globals.css` (`@theme`)
+2. Adjust the sentiment colours, spacing and fonts
+3. Restart `npm run dev`
 
 ---
 
@@ -380,17 +505,17 @@ npm install --legacy-peer-deps
 **Backend won't start**
 - Check port 8500 is free
 - Run `python manage.py migrate` first
-- Run `python manage.py seed_data` to load demo data
+- Run `python manage.py seed_data` to load the demo data
 
-**Frontend won't connect to backend**
-- Is Django running on 8500?
+**Frontend can't reach the backend**
+- Is Django running on port 8500?
 - Check `DJANGO_API_URL` (defaults to `http://127.0.0.1:8500/api`)
-- Check browser console for CORS errors (shouldn't happen since we rewrite)
+- Look for errors in the browser console and the Django terminal
 
 **Can't sign in**
 - Use the seeded credentials: `ochiengs@vela.co` / `vela-demo-2026`
-- Check the httpOnly cookie is being set (`DevTools → Application → Cookies`)
-- Check Django logs for auth errors
+- Check the httpOnly cookie is being set (DevTools → Application → Cookies)
+- Check the Django terminal for auth errors
 
 ---
 
@@ -398,26 +523,23 @@ npm install --legacy-peer-deps
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit changes (`git commit -am 'Add feature'`)
+3. Commit your changes
 4. Push (`git push origin feature/your-feature`)
-5. Open a Pull Request
+5. Open a pull request
 
-Code style:
-- Use TypeScript strict mode
-- Format with Prettier
-- Keep components small and focused
-
----
-
-## License
-
-MIT. Use it, fork it, build on it.
+Please run the backend tests and `npm run typecheck` before opening a pull request.
 
 ---
 
 ## Notes
 
-- The original design file (`socialNET.dc.html`) is gated behind Claude. If you have it, share it locally to pixel-check the implementation.
-- This is a demo with canned data. In production, integrate real social media APIs (Twitter API v2, Meta Graph API, LinkedIn API).
-- The seeded dataset is Vela's recall-rumor storyline — a fictional brand crisis for demo purposes.
+- Mentions are demo data. A production version would pull them from the platform APIs (X API v2, Meta Graph API, LinkedIn API) and run each one through `sentiment.py` on arrival.
+- The seeded dataset follows "Vela", a fictional drinks brand dealing with a false product-recall rumour.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Author
+
+**Mark Kinuthia** - [github.com/kinuthia-mark](https://github.com/kinuthia-mark)

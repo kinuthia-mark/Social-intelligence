@@ -9,7 +9,8 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import mock_data
+from . import assistant, mock_data
+from .sentiment import analyze
 from .models import (
     Alert, AlertRule, AuditLog, Crisis, Integration, Influencer, Mention, Report, ScheduledReport, TeamUser,
 )
@@ -91,16 +92,86 @@ class ReportTypesView(APIView):
 
 
 class AssistantView(APIView):
+    """Answers questions about the brand from the data in the database."""
+
     def post(self, request):
-        prompt = request.data.get("prompt", "")
+        prompt = str(request.data.get("prompt", ""))[:500]
         message_id = f"a_{int(time.time() * 1000)}"
-        return Response(mock_data.assistant_reply(prompt, message_id))
+        return Response({"id": message_id, "role": "assistant", **assistant.reply(prompt)})
 
 
 class PostAnalysisView(APIView):
+    """Analyses a post.
+
+    Send {"text": "..."} to analyse any pasted text with the sentiment
+    engine in intel/sentiment.py. Send {"url": "..."} to load the sample
+    post (fetching live posts needs platform API access).
+    """
+
     def post(self, request):
+        text = str(request.data.get("text", "")).strip()
+        if text:
+            if len(text) > 5000:
+                return Response({"text": ["Keep the text under 5000 characters."]}, status=400)
+            return Response(_analyse_text(text))
         url = request.data.get("url") or mock_data.SAMPLE_POST_ANALYSIS["url"]
-        return Response({**mock_data.SAMPLE_POST_ANALYSIS, "url": url})
+        return Response({**mock_data.SAMPLE_POST_ANALYSIS, "url": url, "source": "url"})
+
+
+def _analyse_text(text: str) -> dict:
+    """Builds the same response shape as the sample post, from real analysis."""
+    a = analyze(text)
+    words = len(text.split())
+    hashtags = [t for t in a.topics if t.startswith("#")]
+    risk_level = min(95, len(a.risks) * 30 + a.negative)
+    positive_intent = "positive" if a.label == "positive" else "warning" if a.label in ("mixed", "neutral") else "critical"
+
+    recommendations = []
+    if a.risks:
+        recommendations.append({"icon": "engage", "title": "Respond before it spreads",
+                                "desc": f"The post mentions {', '.join(a.risks)}. Reply with facts or a source, and flag it to the crisis team."})
+    if a.label == "positive":
+        recommendations.append({"icon": "amplify", "title": "Amplify it",
+                                "desc": "Thank the author and ask to reshare. Positive posts spread furthest in their first hour."})
+    if a.label == "negative" and not a.risks:
+        recommendations.append({"icon": "engage", "title": "Reply personally",
+                                "desc": "Acknowledge the complaint publicly and move the details to a direct message."})
+    if not hashtags:
+        recommendations.append({"icon": "future", "title": "Add a campaign hashtag",
+                                "desc": "Posts without a hashtag are harder to track and group in reports."})
+    if not recommendations:
+        recommendations.append({"icon": "future", "title": "Keep monitoring",
+                                "desc": "Nothing here needs action yet. Watch the replies for a change in tone."})
+
+    return {
+        "source": "text",
+        "url": "",
+        "platform": "news",
+        "author": {"name": "Pasted text", "handle": f"{words} words", "initials": "TX", "color": "#64748b",
+                   "followers": "", "verified": False},
+        "content": text,
+        "performance": [
+            {"label": "Words", "value": str(words), "sub": f"{len(text)} characters", "intent": "positive"},
+            {"label": "Hashtags", "value": str(len(hashtags)), "sub": ", ".join(hashtags[:2]) or "none", "intent": "positive"},
+            {"label": "Confidence", "value": f"{a.confidence}%", "sub": "of the sentiment call", "intent": "positive"},
+            {"label": "Risk terms", "value": str(len(a.risks)), "sub": ", ".join(a.risks[:2]) or "none found",
+             "intent": "critical" if a.risks else "positive"},
+        ],
+        "sentiment": {"positive": a.positive, "neutral": a.neutral, "negative": a.negative,
+                      "tone": ", ".join(e["k"] for e in a.emotions[:2]) or "Neutral"},
+        "scores": [
+            {"label": "Overall sentiment", "value": round((a.score + 1) * 50), "intent": positive_intent},
+            {"label": "Emotional intensity", "value": min(100, (a.positive + a.negative) * 2), "intent": "positive"},
+            {"label": "Topic clarity", "value": min(100, 40 + len(a.topics) * 10), "intent": "positive"},
+            {"label": "Risk exposure", "value": risk_level, "intent": "critical" if risk_level > 50 else "warning" if risk_level > 20 else "positive"},
+        ],
+        "positives": a.positive_phrases or ["no clearly positive wording"],
+        "risks": ([f"mentions {r}" for r in a.risks] + a.negative_phrases)[:4] or ["none detected"],
+        "recommendations": recommendations[:3],
+        "topics": a.topics,
+        "emotions": a.emotions,
+        "label": a.label,
+    }
 
 
 class InfluencerListView(ListAPIView):

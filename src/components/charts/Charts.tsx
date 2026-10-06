@@ -40,6 +40,10 @@ const axisProps = {
   axisLine: false,
 } as const;
 
+// Short axis labels (2.5k instead of 2,500) so the numbers fit the axis width.
+const compactNumber = (value: number) =>
+  Math.abs(value) >= 1000 ? `${+(value / 1000).toFixed(1)}k` : `${value}`;
+
 function TooltipBox({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -71,7 +75,7 @@ export function AreaTrend({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <AreaChart data={data} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
         <defs>
           {series.map((s) => (
             <linearGradient key={s.key} id={`g-${s.key}`} x1="0" y1="0" x2="0" y2="1">
@@ -82,7 +86,7 @@ export function AreaTrend({
         </defs>
         <CartesianGrid vertical={false} stroke={PALETTE.grid} />
         <XAxis dataKey="date" {...axisProps} minTickGap={24} />
-        <YAxis {...axisProps} width={44} />
+        <YAxis {...axisProps} width={40} tickFormatter={compactNumber} />
         <Tooltip content={<TooltipBox />} />
         {showLegend && <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />}
         {series.map((s) => (
@@ -114,10 +118,10 @@ export function LineTrend({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
         <CartesianGrid vertical={false} stroke={PALETTE.grid} />
         <XAxis dataKey="date" {...axisProps} minTickGap={24} />
-        <YAxis {...axisProps} width={44} />
+        <YAxis {...axisProps} width={40} tickFormatter={compactNumber} />
         <Tooltip content={<TooltipBox />} />
         <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
         {series.map((s) => (
@@ -156,7 +160,7 @@ export function Bars({
       <BarChart
         data={data}
         layout={layout}
-        margin={{ top: 6, right: 8, left: vertical ? 8 : -18, bottom: 0 }}
+        margin={{ top: 6, right: 8, left: vertical ? 8 : 0, bottom: 0 }}
       >
         <CartesianGrid horizontal={!vertical} vertical={vertical} stroke={PALETTE.grid} />
         {vertical ? (
@@ -167,7 +171,7 @@ export function Bars({
         ) : (
           <>
             <XAxis dataKey={xKey} {...axisProps} minTickGap={16} />
-            <YAxis {...axisProps} width={44} />
+            <YAxis {...axisProps} width={40} tickFormatter={compactNumber} />
           </>
         )}
         <Tooltip content={<TooltipBox />} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
